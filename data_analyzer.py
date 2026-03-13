@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.express as px
 import io
 
 st.set_page_config(page_title="Data Analysis System", page_icon="📊", layout="wide")
@@ -61,48 +60,41 @@ if uploaded_file is not None:
         stats["kurtosis"] = df[numeric_cols].kurt()
         st.dataframe(stats.style.format("{:.3f}"), use_container_width=True)
 
-    # CHARTS
+    # CHARTS - using only native Streamlit charts
     if numeric_cols:
         st.markdown('<div class="section-title">📉 Charts & Visualizations</div>', unsafe_allow_html=True)
-        tab1, tab2, tab3, tab4 = st.tabs(["Distribution", "Box Plots", "Bar Chart", "Scatter Plot"])
+        tab1, tab2, tab3, tab4 = st.tabs(["Distribution", "Box Plots", "Bar Chart", "Line Chart"])
 
         with tab1:
             col_to_plot = st.selectbox("Select column", numeric_cols, key="dist_col")
-            fig = px.histogram(df, x=col_to_plot, marginal="rug", nbins=40,
-                               title=f"Distribution of {col_to_plot}",
-                               color_discrete_sequence=["#1f77b4"])
-            st.plotly_chart(fig, use_container_width=True)
+            chart_data = df[col_to_plot].dropna().value_counts().sort_index()
+            st.bar_chart(chart_data)
 
         with tab2:
             selected_cols = st.multiselect("Select columns", numeric_cols,
-                                           default=numeric_cols[:min(5, len(numeric_cols))], key="box_cols")
+                                           default=numeric_cols[:min(4, len(numeric_cols))], key="box_cols")
             if selected_cols:
-                fig = px.box(df, y=selected_cols, title="Box Plots")
-                st.plotly_chart(fig, use_container_width=True)
+                # Show as area chart approximation using describe
+                box_data = df[selected_cols].describe().T[["25%", "50%", "75%"]]
+                st.bar_chart(box_data)
+                st.caption("Showing 25th, 50th (median), and 75th percentiles per column")
 
         with tab3:
             cat_cols = df.select_dtypes(include=["object", "category"]).columns.tolist()
             if cat_cols:
                 cat_col = st.selectbox("Category column", cat_cols, key="bar_cat")
                 num_col = st.selectbox("Value column", numeric_cols, key="bar_num")
-                bar_data = df.groupby(cat_col)[num_col].mean().sort_values(ascending=False).head(15).reset_index()
-                fig = px.bar(bar_data, x=cat_col, y=num_col, title=f"Average {num_col} by {cat_col}",
-                             color_discrete_sequence=["#1f77b4"])
-                st.plotly_chart(fig, use_container_width=True)
+                bar_data = df.groupby(cat_col)[num_col].mean().sort_values(ascending=False).head(15)
+                st.bar_chart(bar_data)
             else:
                 st.info("No categorical columns found for bar chart.")
 
         with tab4:
-            if len(numeric_cols) >= 2:
-                x_col = st.selectbox("X axis", numeric_cols, key="scatter_x")
-                y_col = st.selectbox("Y axis", numeric_cols, index=1, key="scatter_y")
-                fig = px.scatter(df, x=x_col, y=y_col, opacity=0.6,
-                                 title=f"{x_col} vs {y_col}",
-                                 color_discrete_sequence=["#1f77b4"],
-                                 trendline="ols")
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.info("Need at least 2 numeric columns for scatter plot.")
+            if len(numeric_cols) >= 1:
+                line_cols = st.multiselect("Select columns to plot", numeric_cols,
+                                           default=numeric_cols[:min(3, len(numeric_cols))], key="line_cols")
+                if line_cols:
+                    st.line_chart(df[line_cols].reset_index(drop=True))
 
     # CORRELATION
     if len(numeric_cols) >= 2:
@@ -112,9 +104,12 @@ if uploaded_file is not None:
         col_a, col_b = st.columns([2, 1])
 
         with col_a:
-            fig = px.imshow(corr, text_auto=True, color_continuous_scale="RdBu_r",
-                            zmin=-1, zmax=1, title="Correlation Heatmap", aspect="auto")
-            st.plotly_chart(fig, use_container_width=True)
+            st.markdown("**Correlation Matrix**")
+            # Color the correlation table
+            st.dataframe(
+                corr.style.background_gradient(cmap="coolwarm", vmin=-1, vmax=1).format("{:.2f}"),
+                use_container_width=True
+            )
 
         with col_b:
             st.markdown("**🔍 Strong Correlations (|r| > 0.7)**")
@@ -150,6 +145,6 @@ else:
     **What this system analyzes:**
     - 🗂️ Dataset overview (shape, missing values, column types)
     - 📈 Summary statistics (mean, std, min, max, skewness, kurtosis)
-    - 📉 Charts: distributions, box plots, bar charts, scatter plots
-    - 🔗 Correlation heatmap and pattern detection
+    - 📉 Charts: distributions, bar charts, line charts
+    - 🔗 Correlation matrix and pattern detection
     """)
