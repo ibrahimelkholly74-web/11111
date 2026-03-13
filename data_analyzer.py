@@ -14,24 +14,17 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown('<div class="main-header">📊 Data Analysis System</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-header">Upload your CSV or Excel file to get instant insights</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-header">Upload a CSV file to get instant insights</div>', unsafe_allow_html=True)
 
-uploaded_file = st.file_uploader("Upload your data file", type=["csv", "xlsx", "xls"], help="If Excel fails, try saving as CSV first")
+# CSV only - no extra dependencies needed
+uploaded_file = st.file_uploader("Upload your CSV file", type=["csv"])
 
 if uploaded_file is not None:
     try:
-        if uploaded_file.name.endswith(".csv"):
-            df = pd.read_csv(uploaded_file)
-        elif uploaded_file.name.endswith(".xlsx") or uploaded_file.name.endswith(".xls"):
-            try:
-                df = pd.read_excel(uploaded_file, engine="openpyxl")
-            except ImportError:
-                st.error("❌ Excel support is not available. Please save your file as CSV and re-upload.")
-                st.stop()
-        st.success(f"✅ File **{uploaded_file.name}** loaded successfully!")
+        df = pd.read_csv(uploaded_file)
+        st.success(f"✅ File **{uploaded_file.name}** loaded — {df.shape[0]:,} rows × {df.shape[1]} columns")
     except Exception as e:
         st.error(f"Error loading file: {e}")
-        st.info("💡 Tip: Try saving your file as CSV format and re-uploading.")
         st.stop()
 
     # OVERVIEW
@@ -65,10 +58,10 @@ if uploaded_file is not None:
         stats["kurtosis"] = df[numeric_cols].kurt()
         st.dataframe(stats.style.format("{:.3f}"), use_container_width=True)
 
-    # CHARTS - using only native Streamlit charts
+    # CHARTS
     if numeric_cols:
         st.markdown('<div class="section-title">📉 Charts & Visualizations</div>', unsafe_allow_html=True)
-        tab1, tab2, tab3, tab4 = st.tabs(["Distribution", "Box Plots", "Bar Chart", "Line Chart"])
+        tab1, tab2, tab3, tab4 = st.tabs(["Distribution", "Percentiles", "Bar Chart", "Line Chart"])
 
         with tab1:
             col_to_plot = st.selectbox("Select column", numeric_cols, key="dist_col")
@@ -79,10 +72,9 @@ if uploaded_file is not None:
             selected_cols = st.multiselect("Select columns", numeric_cols,
                                            default=numeric_cols[:min(4, len(numeric_cols))], key="box_cols")
             if selected_cols:
-                # Show as area chart approximation using describe
                 box_data = df[selected_cols].describe().T[["25%", "50%", "75%"]]
                 st.bar_chart(box_data)
-                st.caption("Showing 25th, 50th (median), and 75th percentiles per column")
+                st.caption("25th, 50th (median), and 75th percentiles per column")
 
         with tab3:
             cat_cols = df.select_dtypes(include=["object", "category"]).columns.tolist()
@@ -95,11 +87,10 @@ if uploaded_file is not None:
                 st.info("No categorical columns found for bar chart.")
 
         with tab4:
-            if len(numeric_cols) >= 1:
-                line_cols = st.multiselect("Select columns to plot", numeric_cols,
-                                           default=numeric_cols[:min(3, len(numeric_cols))], key="line_cols")
-                if line_cols:
-                    st.line_chart(df[line_cols].reset_index(drop=True))
+            line_cols = st.multiselect("Select columns to plot", numeric_cols,
+                                       default=numeric_cols[:min(3, len(numeric_cols))], key="line_cols")
+            if line_cols:
+                st.line_chart(df[line_cols].reset_index(drop=True))
 
     # CORRELATION
     if len(numeric_cols) >= 2:
@@ -110,7 +101,6 @@ if uploaded_file is not None:
 
         with col_a:
             st.markdown("**Correlation Matrix**")
-            # Color the correlation table
             st.dataframe(
                 corr.style.background_gradient(cmap="coolwarm", vmin=-1, vmax=1).format("{:.2f}"),
                 use_container_width=True
@@ -145,11 +135,14 @@ if uploaded_file is not None:
                        mime="text/csv")
 
 else:
-    st.info("👆 Upload a CSV or Excel file above to begin analysis.")
+    st.info("👆 Upload a CSV file above to begin analysis.")
     st.markdown("""
     **What this system analyzes:**
     - 🗂️ Dataset overview (shape, missing values, column types)
     - 📈 Summary statistics (mean, std, min, max, skewness, kurtosis)
-    - 📉 Charts: distributions, bar charts, line charts
+    - 📉 Charts: distributions, percentiles, bar charts, line charts
     - 🔗 Correlation matrix and pattern detection
+    - 💾 Export summary as CSV
+
+    💡 **Have an Excel file?** Open it in Excel → File → Save As → CSV
     """)
