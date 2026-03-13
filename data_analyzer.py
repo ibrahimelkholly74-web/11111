@@ -16,17 +16,22 @@ st.markdown("""
 st.markdown('<div class="main-header">📊 Data Analysis System</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-header">Upload your CSV or Excel file to get instant insights</div>', unsafe_allow_html=True)
 
-uploaded_file = st.file_uploader("Upload your data file", type=["csv", "xlsx", "xls"])
+uploaded_file = st.file_uploader("Upload your data file", type=["csv", "xlsx", "xls"], help="If Excel fails, try saving as CSV first")
 
 if uploaded_file is not None:
     try:
         if uploaded_file.name.endswith(".csv"):
             df = pd.read_csv(uploaded_file)
-        else:
-            df = pd.read_excel(uploaded_file)
+        elif uploaded_file.name.endswith(".xlsx") or uploaded_file.name.endswith(".xls"):
+            try:
+                df = pd.read_excel(uploaded_file, engine="openpyxl")
+            except ImportError:
+                st.error("❌ Excel support is not available. Please save your file as CSV and re-upload.")
+                st.stop()
         st.success(f"✅ File **{uploaded_file.name}** loaded successfully!")
     except Exception as e:
         st.error(f"Error loading file: {e}")
+        st.info("💡 Tip: Try saving your file as CSV format and re-uploading.")
         st.stop()
 
     # OVERVIEW
