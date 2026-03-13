@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import os
 import io
+import glob
 
 st.set_page_config(page_title="Data Analysis System", page_icon="📊", layout="wide")
 
@@ -11,55 +12,73 @@ st.markdown("""
     .main-header { font-size: 2.5rem; font-weight: 700; color: #1f77b4; text-align: center; margin-bottom: 0.5rem; }
     .sub-header { text-align: center; color: #666; margin-bottom: 2rem; }
     .section-title { font-size: 1.4rem; font-weight: 600; color: #333; margin-top: 1.5rem; margin-bottom: 1rem; border-bottom: 2px solid #e0e0e0; padding-bottom: 0.3rem; }
+    .file-box { background: #f0f4ff; border-radius: 10px; padding: 1rem; border: 1px dashed #1f77b4; }
 </style>
 """, unsafe_allow_html=True)
 
 st.markdown('<div class="main-header">📊 Data Analysis System</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-header">Upload a CSV file or enter a local file path to analyze your data</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-header">Read files directly from your computer</div>', unsafe_allow_html=True)
 
-input_method = st.radio("How do you want to load your data?",
-                        ["⬆️ Upload CSV", "📁 File path (local only)"], horizontal=True)
+# ── FILE LOADER ───────────────────────────────────────────────────────────────
+st.markdown('<div class="section-title">📁 Load Your File</div>', unsafe_allow_html=True)
+
+# Show common locations to help user
+with st.expander("📌 Common file locations (click to expand)"):
+    home = os.path.expanduser("~")
+    common = {
+        "🖥️ Desktop": os.path.join(home, "Desktop"),
+        "📂 Documents": os.path.join(home, "Documents"),
+        "⬇️ Downloads": os.path.join(home, "Downloads"),
+    }
+    for label, path in common.items():
+        if os.path.exists(path):
+            files = glob.glob(os.path.join(path, "*.csv")) + \
+                    glob.glob(os.path.join(path, "*.xlsx")) + \
+                    glob.glob(os.path.join(path, "*.xls"))
+            if files:
+                st.markdown(f"**{label}** — `{path}`")
+                for f in files[:10]:
+                    st.code(f, language=None)
+            else:
+                st.markdown(f"**{label}** — no CSV/Excel files found in `{path}`")
+
+# File path input
+file_path = st.text_input(
+    "📝 Paste your file path here",
+    placeholder="e.g.  C:/Users/yourname/Desktop/data.csv   or   /home/yourname/data.xlsx",
+    help="Copy the full path of your file and paste it here"
+)
 
 df = None
 
-if input_method == "⬆️ Upload CSV":
-    uploaded_file = st.file_uploader("Upload your CSV file", type=["csv"])
-    if uploaded_file is not None:
-        try:
-            df = pd.read_csv(uploaded_file)
-            st.success(f"✅ Loaded **{uploaded_file.name}** — {df.shape[0]:,} rows × {df.shape[1]} columns")
-        except Exception as e:
-            st.error(f"Error loading file: {e}")
-    st.caption("💡 Have an Excel file? Open it → File → Save As → CSV")
+if file_path:
+    file_path = file_path.strip().strip('"').strip("'")
 
-else:
-    st.info("💡 File path only works when running locally with `streamlit run data_analyzer.py`")
-    file_path = st.text_input("Enter full file path",
-                               placeholder="e.g. C:/Users/you/Desktop/data.csv")
-    if file_path:
-        file_path = file_path.strip().strip('"').strip("'")
-        if not os.path.exists(file_path):
-            st.error(f"❌ File not found: `{file_path}`")
-        else:
-            try:
-                ext = os.path.splitext(file_path)[1].lower()
+    if not os.path.exists(file_path):
+        st.error(f"❌ File not found: `{file_path}`")
+        st.info("💡 Tip: Right-click the file → Properties (Windows) or Get Info (Mac) to copy the full path.")
+    else:
+        ext = os.path.splitext(file_path)[1].lower()
+        try:
+            with st.spinner("Loading file..."):
                 if ext == ".csv":
                     df = pd.read_csv(file_path)
                 elif ext in [".xlsx", ".xls"]:
-                    try:
-                        df = pd.read_excel(file_path)
-                    except ImportError:
-                        st.error("❌ Install openpyxl locally: `pip install openpyxl`")
+                    df = pd.read_excel(file_path)
                 else:
-                    st.error("❌ Unsupported format. Use CSV or Excel.")
-                if df is not None:
-                    st.success(f"✅ Loaded **{os.path.basename(file_path)}** — {df.shape[0]:,} rows × {df.shape[1]} columns")
-            except Exception as e:
-                st.error(f"Error: {e}")
+                    st.error("❌ Unsupported format. Please use CSV or Excel (.xlsx / .xls)")
+
+            if df is not None:
+                st.success(f"✅ Loaded **{os.path.basename(file_path)}** — {df.shape[0]:,} rows × {df.shape[1]} columns")
+        except ImportError:
+            st.error("❌ Excel support missing. Run: `pip install openpyxl` in your terminal.")
+        except Exception as e:
+            st.error(f"❌ Error loading file: {e}")
 
 # ── ANALYSIS ──────────────────────────────────────────────────────────────────
 if df is not None:
 
+    # OVERVIEW
     st.markdown('<div class="section-title">🗂️ Dataset Overview</div>', unsafe_allow_html=True)
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Rows", f"{df.shape[0]:,}")
@@ -80,6 +99,7 @@ if df is not None:
         })
         st.dataframe(info_df, use_container_width=True)
 
+    # SUMMARY STATISTICS
     numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
 
     if numeric_cols:
@@ -89,6 +109,7 @@ if df is not None:
         stats["kurtosis"] = df[numeric_cols].kurt()
         st.dataframe(stats.style.format("{:.3f}"), use_container_width=True)
 
+    # CHARTS
     if numeric_cols:
         st.markdown('<div class="section-title">📉 Charts & Visualizations</div>', unsafe_allow_html=True)
         tab1, tab2, tab3, tab4 = st.tabs(["Distribution", "Percentiles", "Bar Chart", "Line Chart"])
@@ -119,6 +140,7 @@ if df is not None:
             if line_cols:
                 st.line_chart(df[line_cols].reset_index(drop=True))
 
+    # CORRELATION
     if len(numeric_cols) >= 2:
         st.markdown('<div class="section-title">🔗 Correlation & Patterns</div>', unsafe_allow_html=True)
         corr = df[numeric_cols].corr().round(2)
@@ -150,6 +172,7 @@ if df is not None:
                 direction = "right-skewed ➡️" if skew > 0.5 else "left-skewed ⬅️" if skew < -0.5 else "normal ✅"
                 st.write(f"• **{col}**: {direction} ({skew:.2f})")
 
+    # EXPORT
     st.markdown('<div class="section-title">💾 Export</div>', unsafe_allow_html=True)
     csv_buffer = io.StringIO()
     df.describe().to_csv(csv_buffer)
@@ -159,12 +182,16 @@ if df is not None:
                        mime="text/csv")
 
 else:
-    st.info("👆 Load a file above to begin analysis.")
     st.markdown("""
-    **What this system analyzes:**
-    - 🗂️ Dataset overview — shape, missing values, column types
-    - 📈 Summary statistics — mean, std, min, max, skewness, kurtosis
-    - 📉 Charts — distributions, percentiles, bar charts, line charts
-    - 🔗 Correlation matrix and pattern detection
-    - 💾 Export summary as CSV
+    ### How to use:
+    1. **Expand** the common locations above to find your file path
+    2. **Copy** the full file path
+    3. **Paste** it in the input box above
+    4. Analysis starts automatically!
+
+    ### How to run this app locally:
+    ```bash
+    pip install streamlit pandas numpy openpyxl
+    streamlit run data_analyzer.py
+    ```
     """)
