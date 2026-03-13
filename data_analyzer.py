@@ -169,34 +169,61 @@ if uploaded_file is not None:
                         continue
                 if not loaded:
                     # Last resort: read xlsx as zip and parse XML manually
-                    import zipfile, xml.etree.ElementTree as ET
+                    import zipfile, xml.etree.ElementTree as ET, re
                     uploaded_file.seek(0)
                     zf = zipfile.ZipFile(uploaded_file)
+                    ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+
                     # get shared strings
                     strings = []
                     if "xl/sharedStrings.xml" in zf.namelist():
                         tree = ET.parse(zf.open("xl/sharedStrings.xml"))
-                        strings = [t.text or "" for t in tree.getroot().iter("{http://schemas.openxmlformats.org/spreadsheetml/2006/main}t")]
-                    # parse first sheet
-                    sheet = zf.open("xl/worksheets/sheet1.xml")
-                    tree = ET.parse(sheet)
-                    ns = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+                        for si in tree.getroot().iter(f"{{{ns}}}si"):
+                            texts = [t.text or "" for t in si.iter(f"{{{ns}}}t")]
+                            strings.append("".join(texts))
+
+                    # find first sheet
+                    sheet_name = next((n for n in zf.namelist() if re.match(r"xl/worksheets/sheet\d+\.xml", n)), None)
+                    if not sheet_name:
+                        st.error("❌ Could not find sheet in Excel file.")
+                        st.stop()
+
+                    tree = ET.parse(zf.open(sheet_name))
+                    root = tree.getroot()
+
+                    def col_index(ref):
+                        """Convert Excel col letters like AB to index."""
+                        letters = re.sub(r"[0-9]", "", ref)
+                        idx = 0
+                        for ch in letters:
+                            idx = idx * 26 + (ord(ch.upper()) - ord("A") + 1)
+                        return idx - 1
+
                     rows = []
-                    for row in tree.getroot().iter(f"{ns}row"):
-                        r = []
-                        for c in row.iter(f"{ns}c"):
-                            t = c.get("t","")
-                            v = c.find(f"{ns}v")
-                            if v is None:
-                                r.append("")
+                    for row_el in root.iter(f"{{{ns}}}row"):
+                        cells = list(row_el.iter(f"{{{ns}}}c"))
+                        if not cells:
+                            continue
+                        max_col = max(col_index(c.get("r","A1")) for c in cells) + 1
+                        row = [""] * max_col
+                        for c in cells:
+                            ci = col_index(c.get("r", "A1"))
+                            t = c.get("t", "")
+                            v = c.find(f"{{{ns}}}v")
+                            if v is None or v.text is None:
+                                row[ci] = ""
                             elif t == "s":
-                                r.append(strings[int(v.text)])
+                                row[ci] = strings[int(v.text)] if int(v.text) < len(strings) else ""
+                            elif t == "b":
+                                row[ci] = bool(int(v.text))
                             else:
-                                r.append(v.text)
-                        rows.append(r)
+                                row[ci] = v.text
+                        rows.append(row)
+
                     if rows:
+                        max_cols = max(len(r) for r in rows)
+                        rows = [r + [""] * (max_cols - len(r)) for r in rows]
                         df = pd.DataFrame(rows[1:], columns=rows[0])
-                        # try convert numeric columns
                         for col in df.columns:
                             try:
                                 df[col] = pd.to_numeric(df[col])
