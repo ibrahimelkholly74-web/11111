@@ -155,7 +155,57 @@ if uploaded_file is not None:
             if ext == "csv":
                 df = pd.read_csv(uploaded_file)
             elif ext in ["xlsx", "xls"]:
-                df = pd.read_excel(uploaded_file, engine="xlrd" if ext == "xls" else "openpyxl")
+                # Try multiple engines - use whichever is available
+                loaded = False
+                for engine in ["openpyxl", "xlrd", "xlwt", "odf"]:
+                    try:
+                        import importlib
+                        importlib.import_module(engine.replace("xlwt","xlwt"))
+                        df = pd.read_excel(uploaded_file, engine=engine)
+                        loaded = True
+                        break
+                    except (ImportError, Exception):
+                        uploaded_file.seek(0)
+                        continue
+                if not loaded:
+                    # Last resort: read xlsx as zip and parse XML manually
+                    import zipfile, xml.etree.ElementTree as ET
+                    uploaded_file.seek(0)
+                    zf = zipfile.ZipFile(uploaded_file)
+                    # get shared strings
+                    strings = []
+                    if "xl/sharedStrings.xml" in zf.namelist():
+                        tree = ET.parse(zf.open("xl/sharedStrings.xml"))
+                        strings = [t.text or "" for t in tree.getroot().iter("{http://schemas.openxmlformats.org/spreadsheetml/2006/main}t")]
+                    # parse first sheet
+                    sheet = zf.open("xl/worksheets/sheet1.xml")
+                    tree = ET.parse(sheet)
+                    ns = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+                    rows = []
+                    for row in tree.getroot().iter(f"{ns}row"):
+                        r = []
+                        for c in row.iter(f"{ns}c"):
+                            t = c.get("t","")
+                            v = c.find(f"{ns}v")
+                            if v is None:
+                                r.append("")
+                            elif t == "s":
+                                r.append(strings[int(v.text)])
+                            else:
+                                r.append(v.text)
+                        rows.append(r)
+                    if rows:
+                        df = pd.DataFrame(rows[1:], columns=rows[0])
+                        # try convert numeric columns
+                        for col in df.columns:
+                            try:
+                                df[col] = pd.to_numeric(df[col])
+                            except Exception:
+                                pass
+                        loaded = True
+                    else:
+                        st.error("❌ Could not read Excel file. Please save as CSV and re-upload.")
+                        st.stop()
         st.success(f"✅ **{uploaded_file.name}** loaded — {df.shape[0]:,} rows × {df.shape[1]} columns")
     except Exception as e:
         st.error(f"❌ Error: {e}")
