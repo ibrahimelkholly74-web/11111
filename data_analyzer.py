@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import os
 import io
 
 st.set_page_config(page_title="Data Analysis System", page_icon="📊", layout="wide")
@@ -14,18 +15,51 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown('<div class="main-header">📊 Data Analysis System</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-header">Upload a CSV file to get instant insights</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-header">Upload a file or enter a path to analyze your data</div>', unsafe_allow_html=True)
 
-# CSV only - no extra dependencies needed
-uploaded_file = st.file_uploader("Upload your CSV file", type=["csv"])
+input_method = st.radio("How do you want to load your data?",
+                        ["⬆️ Upload file", "📁 File path (local only)"], horizontal=True)
 
-if uploaded_file is not None:
-    try:
-        df = pd.read_csv(uploaded_file)
-        st.success(f"✅ File **{uploaded_file.name}** loaded — {df.shape[0]:,} rows × {df.shape[1]} columns")
-    except Exception as e:
-        st.error(f"Error loading file: {e}")
-        st.stop()
+df = None
+
+if input_method == "⬆️ Upload file":
+    uploaded_file = st.file_uploader("Upload your file", type=["csv", "xlsx", "xls"])
+    if uploaded_file is not None:
+        try:
+            ext = os.path.splitext(uploaded_file.name)[1].lower()
+            if ext == ".csv":
+                df = pd.read_csv(uploaded_file)
+            elif ext in [".xlsx", ".xls"]:
+                df = pd.read_excel(uploaded_file)
+            if df is not None:
+                st.success(f"✅ Loaded **{uploaded_file.name}** — {df.shape[0]:,} rows × {df.shape[1]} columns")
+        except Exception as e:
+            st.error(f"Error loading file: {e}")
+
+else:
+    st.info("💡 File path only works when running the app locally on your computer.")
+    file_path = st.text_input("Enter full file path",
+                               placeholder="e.g. C:/Users/you/Desktop/data.csv")
+    if file_path:
+        file_path = file_path.strip().strip('"').strip("'")
+        if not os.path.exists(file_path):
+            st.error(f"❌ File not found: `{file_path}`")
+        else:
+            try:
+                ext = os.path.splitext(file_path)[1].lower()
+                if ext == ".csv":
+                    df = pd.read_csv(file_path)
+                elif ext in [".xlsx", ".xls"]:
+                    df = pd.read_excel(file_path)
+                else:
+                    st.error("❌ Unsupported format. Use CSV or Excel.")
+                if df is not None:
+                    st.success(f"✅ Loaded **{os.path.basename(file_path)}** — {df.shape[0]:,} rows × {df.shape[1]} columns")
+            except Exception as e:
+                st.error(f"Error loading file: {e}")
+
+# ── ANALYSIS ──────────────────────────────────────────────────────────────────
+if df is not None:
 
     # OVERVIEW
     st.markdown('<div class="section-title">🗂️ Dataset Overview</div>', unsafe_allow_html=True)
@@ -135,7 +169,7 @@ if uploaded_file is not None:
                        mime="text/csv")
 
 else:
-    st.info("👆 Upload a CSV file above to begin analysis.")
+    st.info("👆 Upload a file or enter a file path above to begin analysis.")
     st.markdown("""
     **What this system analyzes:**
     - 🗂️ Dataset overview (shape, missing values, column types)
@@ -143,6 +177,4 @@ else:
     - 📉 Charts: distributions, percentiles, bar charts, line charts
     - 🔗 Correlation matrix and pattern detection
     - 💾 Export summary as CSV
-
-    💡 **Have an Excel file?** Open it in Excel → File → Save As → CSV
     """)
