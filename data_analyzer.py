@@ -142,7 +142,7 @@ st.markdown("""
 
 uploaded_file = st.file_uploader(
     label="",
-    type=["csv"],
+    type=["csv", "xlsx", "xls"],
     label_visibility="collapsed"
 )
 
@@ -150,9 +150,12 @@ df = None
 
 if uploaded_file is not None:
     try:
-        ext = "csv"
+        ext = uploaded_file.name.rsplit(".", 1)[-1].lower()
         with st.spinner("Analyzing your data..."):
-            df = pd.read_csv(uploaded_file)
+            if ext == "csv":
+                df = pd.read_csv(uploaded_file)
+            elif ext in ["xlsx", "xls"]:
+                df = pd.read_excel(uploaded_file, engine="xlrd" if ext == "xls" else "openpyxl")
         st.success(f"✅ **{uploaded_file.name}** loaded — {df.shape[0]:,} rows × {df.shape[1]} columns")
     except Exception as e:
         st.error(f"❌ Error: {e}")
