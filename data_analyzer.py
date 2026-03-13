@@ -1,105 +1,189 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import os
 import io
-import glob
 
 st.set_page_config(page_title="Data Analysis System", page_icon="📊", layout="wide")
 
 st.markdown("""
 <style>
-    .main-header { font-size: 2.5rem; font-weight: 700; color: #1f77b4; text-align: center; margin-bottom: 0.5rem; }
-    .sub-header { text-align: center; color: #666; margin-bottom: 2rem; }
-    .section-title { font-size: 1.4rem; font-weight: 600; color: #333; margin-top: 1.5rem; margin-bottom: 1rem; border-bottom: 2px solid #e0e0e0; padding-bottom: 0.3rem; }
-    .file-box { background: #f0f4ff; border-radius: 10px; padding: 1rem; border: 1px dashed #1f77b4; }
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap');
+
+* { font-family: 'DM Sans', sans-serif; }
+
+.stApp { background: #0a0a0f; color: #f0f0f0; }
+
+.main-header {
+    font-family: 'Syne', sans-serif;
+    font-size: 3rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, #6ee7f7, #a78bfa, #f472b6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-align: center;
+    margin-bottom: 0.2rem;
+    letter-spacing: -1px;
+}
+.sub-header {
+    text-align: center;
+    color: #888;
+    font-size: 1rem;
+    margin-bottom: 2.5rem;
+    font-weight: 300;
+}
+.section-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #a78bfa;
+    margin-top: 2rem;
+    margin-bottom: 1rem;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+/* Upload area */
+[data-testid="stFileUploader"] {
+    background: linear-gradient(135deg, #12121f, #1a1a2e);
+    border: 2px dashed #a78bfa44;
+    border-radius: 20px;
+    padding: 1rem;
+    transition: all 0.3s ease;
+}
+[data-testid="stFileUploader"]:hover {
+    border-color: #a78bfa;
+    box-shadow: 0 0 30px #a78bfa22;
+}
+[data-testid="stFileUploaderDropzone"] {
+    background: transparent !important;
+}
+
+/* Metrics */
+[data-testid="metric-container"] {
+    background: linear-gradient(135deg, #12121f, #1a1a2e);
+    border: 1px solid #a78bfa22;
+    border-radius: 16px;
+    padding: 1rem;
+    transition: all 0.3s;
+}
+[data-testid="metric-container"]:hover {
+    border-color: #a78bfa66;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px #a78bfa11;
+}
+[data-testid="stMetricValue"] { color: #6ee7f7 !important; font-family: 'Syne', sans-serif; font-weight: 700; }
+[data-testid="stMetricLabel"] { color: #888 !important; }
+
+/* Tabs */
+[data-testid="stTabs"] button {
+    color: #888 !important;
+    font-family: 'Syne', sans-serif !important;
+    font-weight: 600 !important;
+    border-radius: 8px !important;
+}
+[data-testid="stTabs"] button[aria-selected="true"] {
+    color: #a78bfa !important;
+    background: #a78bfa11 !important;
+}
+
+/* Dataframe */
+[data-testid="stDataFrame"] { border-radius: 12px; overflow: hidden; }
+
+/* Success/error */
+[data-testid="stAlert"] { border-radius: 12px !important; }
+
+/* Expander */
+[data-testid="stExpander"] {
+    background: #12121f;
+    border: 1px solid #a78bfa22 !important;
+    border-radius: 12px !important;
+}
+
+/* Download button */
+[data-testid="stDownloadButton"] button {
+    background: linear-gradient(135deg, #a78bfa, #6ee7f7) !important;
+    color: #0a0a0f !important;
+    border: none !important;
+    border-radius: 10px !important;
+    font-weight: 600 !important;
+    font-family: 'Syne', sans-serif !important;
+    padding: 0.6rem 1.5rem !important;
+    transition: all 0.3s !important;
+}
+[data-testid="stDownloadButton"] button:hover {
+    opacity: 0.85 !important;
+    transform: translateY(-1px) !important;
+}
+
+/* Radio */
+[data-testid="stRadio"] label { color: #ccc !important; }
+
+/* General text */
+p, li { color: #ccc; }
+h1, h2, h3 { font-family: 'Syne', sans-serif; color: #f0f0f0; }
 </style>
 """, unsafe_allow_html=True)
 
 st.markdown('<div class="main-header">📊 Data Analysis System</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-header">Read files directly from your computer</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-header">Drop your file and get instant deep insights</div>', unsafe_allow_html=True)
 
-# ── FILE LOADER ───────────────────────────────────────────────────────────────
-st.markdown('<div class="section-title">📁 Load Your File</div>', unsafe_allow_html=True)
+# ── UPLOAD AREA ───────────────────────────────────────────────────────────────
+st.markdown('<div class="section-title">⬆ Upload Your Data</div>', unsafe_allow_html=True)
 
-# Show common locations to help user
-with st.expander("📌 Common file locations (click to expand)"):
-    home = os.path.expanduser("~")
-    common = {
-        "🖥️ Desktop": os.path.join(home, "Desktop"),
-        "📂 Documents": os.path.join(home, "Documents"),
-        "⬇️ Downloads": os.path.join(home, "Downloads"),
-    }
-    for label, path in common.items():
-        if os.path.exists(path):
-            files = glob.glob(os.path.join(path, "*.csv")) + \
-                    glob.glob(os.path.join(path, "*.xlsx")) + \
-                    glob.glob(os.path.join(path, "*.xls"))
-            if files:
-                st.markdown(f"**{label}** — `{path}`")
-                for f in files[:10]:
-                    st.code(f, language=None)
-            else:
-                st.markdown(f"**{label}** — no CSV/Excel files found in `{path}`")
+st.markdown("""
+<div style="text-align:center; padding: 1rem 0 0.5rem;">
+    <div style="font-size: 4rem; margin-bottom: 0.5rem;">🗂️</div>
+    <div style="color: #a78bfa; font-family: Syne, sans-serif; font-size: 1.1rem; font-weight: 700; margin-bottom: 0.25rem;">
+        Select or drag & drop your file
+    </div>
+    <div style="color: #555; font-size: 0.85rem;">Supports CSV · Excel (.xlsx, .xls)</div>
+</div>
+""", unsafe_allow_html=True)
 
-# File path input
-file_path = st.text_input(
-    "📝 Paste your file path here",
-    placeholder="e.g.  C:/Users/yourname/Desktop/data.csv   or   /home/yourname/data.xlsx",
-    help="Copy the full path of your file and paste it here"
+uploaded_file = st.file_uploader(
+    label="",
+    type=["csv", "xlsx", "xls"],
+    label_visibility="collapsed"
 )
 
 df = None
 
-if file_path:
-    file_path = file_path.strip().strip('"').strip("'")
-
-    if not os.path.exists(file_path):
-        st.error(f"❌ File not found: `{file_path}`")
-        st.info("💡 Tip: Right-click the file → Properties (Windows) or Get Info (Mac) to copy the full path.")
-    else:
-        ext = os.path.splitext(file_path)[1].lower()
-        try:
-            with st.spinner("Loading file..."):
-                if ext == ".csv":
-                    df = pd.read_csv(file_path)
-                elif ext in [".xlsx", ".xls"]:
-                    df = pd.read_excel(file_path)
-                else:
-                    st.error("❌ Unsupported format. Please use CSV or Excel (.xlsx / .xls)")
-
-            if df is not None:
-                st.success(f"✅ Loaded **{os.path.basename(file_path)}** — {df.shape[0]:,} rows × {df.shape[1]} columns")
-        except ImportError:
-            st.error("❌ Excel support missing. Run: `pip install openpyxl` in your terminal.")
-        except Exception as e:
-            st.error(f"❌ Error loading file: {e}")
+if uploaded_file is not None:
+    try:
+        ext = uploaded_file.name.rsplit(".", 1)[-1].lower()
+        with st.spinner("Analyzing your data..."):
+            if ext == "csv":
+                df = pd.read_csv(uploaded_file)
+            elif ext in ["xlsx", "xls"]:
+                df = pd.read_excel(uploaded_file)
+        st.success(f"✅ **{uploaded_file.name}** loaded — {df.shape[0]:,} rows × {df.shape[1]} columns")
+    except ImportError:
+        st.error("❌ Excel support missing. Run: `pip install openpyxl` then restart.")
+    except Exception as e:
+        st.error(f"❌ Error: {e}")
 
 # ── ANALYSIS ──────────────────────────────────────────────────────────────────
 if df is not None:
 
-    # OVERVIEW
-    st.markdown('<div class="section-title">🗂️ Dataset Overview</div>', unsafe_allow_html=True)
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Rows", f"{df.shape[0]:,}")
-    col2.metric("Columns", df.shape[1])
-    col3.metric("Numeric Columns", len(df.select_dtypes(include=np.number).columns))
-    col4.metric("Missing Values", f"{df.isnull().sum().sum():,}")
+    st.markdown('<div class="section-title">🗂 Dataset Overview</div>', unsafe_allow_html=True)
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Rows", f"{df.shape[0]:,}")
+    c2.metric("Columns", df.shape[1])
+    c3.metric("Numeric Cols", len(df.select_dtypes(include=np.number).columns))
+    c4.metric("Missing Values", f"{df.isnull().sum().sum():,}")
 
     with st.expander("👀 Preview Data", expanded=True):
         st.dataframe(df.head(20), use_container_width=True)
 
     with st.expander("📋 Column Info"):
-        info_df = pd.DataFrame({
+        st.dataframe(pd.DataFrame({
             "Column": df.columns,
             "Type": df.dtypes.values,
             "Non-Null": df.notnull().sum().values,
             "Null Count": df.isnull().sum().values,
             "Null %": (df.isnull().sum().values / len(df) * 100).round(2)
-        })
-        st.dataframe(info_df, use_container_width=True)
+        }), use_container_width=True)
 
-    # SUMMARY STATISTICS
     numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
 
     if numeric_cols:
@@ -109,7 +193,6 @@ if df is not None:
         stats["kurtosis"] = df[numeric_cols].kurt()
         st.dataframe(stats.style.format("{:.3f}"), use_container_width=True)
 
-    # CHARTS
     if numeric_cols:
         st.markdown('<div class="section-title">📉 Charts & Visualizations</div>', unsafe_allow_html=True)
         tab1, tab2, tab3, tab4 = st.tabs(["Distribution", "Percentiles", "Bar Chart", "Line Chart"])
@@ -140,7 +223,6 @@ if df is not None:
             if line_cols:
                 st.line_chart(df[line_cols].reset_index(drop=True))
 
-    # CORRELATION
     if len(numeric_cols) >= 2:
         st.markdown('<div class="section-title">🔗 Correlation & Patterns</div>', unsafe_allow_html=True)
         corr = df[numeric_cols].corr().round(2)
@@ -172,26 +254,17 @@ if df is not None:
                 direction = "right-skewed ➡️" if skew > 0.5 else "left-skewed ⬅️" if skew < -0.5 else "normal ✅"
                 st.write(f"• **{col}**: {direction} ({skew:.2f})")
 
-    # EXPORT
     st.markdown('<div class="section-title">💾 Export</div>', unsafe_allow_html=True)
-    csv_buffer = io.StringIO()
-    df.describe().to_csv(csv_buffer)
+    buf = io.StringIO()
+    df.describe().to_csv(buf)
     st.download_button("📥 Download Summary Statistics (CSV)",
-                       data=csv_buffer.getvalue(),
+                       data=buf.getvalue(),
                        file_name="summary_statistics.csv",
                        mime="text/csv")
 
 else:
     st.markdown("""
-    ### How to use:
-    1. **Expand** the common locations above to find your file path
-    2. **Copy** the full file path
-    3. **Paste** it in the input box above
-    4. Analysis starts automatically!
-
-    ### How to run this app locally:
-    ```bash
-    pip install streamlit pandas numpy openpyxl
-    streamlit run data_analyzer.py
-    ```
-    """)
+    <div style="text-align:center; padding: 2rem; color: #555;">
+        <div style="font-size: 1rem;">Upload a file above to begin · CSV and Excel supported</div>
+    </div>
+    """, unsafe_allow_html=True)
