@@ -15,29 +15,25 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown('<div class="main-header">📊 Data Analysis System</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-header">Upload a file or enter a path to analyze your data</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-header">Upload a CSV file or enter a local file path to analyze your data</div>', unsafe_allow_html=True)
 
 input_method = st.radio("How do you want to load your data?",
-                        ["⬆️ Upload file", "📁 File path (local only)"], horizontal=True)
+                        ["⬆️ Upload CSV", "📁 File path (local only)"], horizontal=True)
 
 df = None
 
-if input_method == "⬆️ Upload file":
-    uploaded_file = st.file_uploader("Upload your file", type=["csv", "xlsx", "xls"])
+if input_method == "⬆️ Upload CSV":
+    uploaded_file = st.file_uploader("Upload your CSV file", type=["csv"])
     if uploaded_file is not None:
         try:
-            ext = os.path.splitext(uploaded_file.name)[1].lower()
-            if ext == ".csv":
-                df = pd.read_csv(uploaded_file)
-            elif ext in [".xlsx", ".xls"]:
-                df = pd.read_excel(uploaded_file)
-            if df is not None:
-                st.success(f"✅ Loaded **{uploaded_file.name}** — {df.shape[0]:,} rows × {df.shape[1]} columns")
+            df = pd.read_csv(uploaded_file)
+            st.success(f"✅ Loaded **{uploaded_file.name}** — {df.shape[0]:,} rows × {df.shape[1]} columns")
         except Exception as e:
             st.error(f"Error loading file: {e}")
+    st.caption("💡 Have an Excel file? Open it → File → Save As → CSV")
 
 else:
-    st.info("💡 File path only works when running the app locally on your computer.")
+    st.info("💡 File path only works when running locally with `streamlit run data_analyzer.py`")
     file_path = st.text_input("Enter full file path",
                                placeholder="e.g. C:/Users/you/Desktop/data.csv")
     if file_path:
@@ -50,18 +46,20 @@ else:
                 if ext == ".csv":
                     df = pd.read_csv(file_path)
                 elif ext in [".xlsx", ".xls"]:
-                    df = pd.read_excel(file_path)
+                    try:
+                        df = pd.read_excel(file_path)
+                    except ImportError:
+                        st.error("❌ Install openpyxl locally: `pip install openpyxl`")
                 else:
                     st.error("❌ Unsupported format. Use CSV or Excel.")
                 if df is not None:
                     st.success(f"✅ Loaded **{os.path.basename(file_path)}** — {df.shape[0]:,} rows × {df.shape[1]} columns")
             except Exception as e:
-                st.error(f"Error loading file: {e}")
+                st.error(f"Error: {e}")
 
 # ── ANALYSIS ──────────────────────────────────────────────────────────────────
 if df is not None:
 
-    # OVERVIEW
     st.markdown('<div class="section-title">🗂️ Dataset Overview</div>', unsafe_allow_html=True)
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Rows", f"{df.shape[0]:,}")
@@ -82,7 +80,6 @@ if df is not None:
         })
         st.dataframe(info_df, use_container_width=True)
 
-    # SUMMARY STATISTICS
     numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
 
     if numeric_cols:
@@ -92,22 +89,19 @@ if df is not None:
         stats["kurtosis"] = df[numeric_cols].kurt()
         st.dataframe(stats.style.format("{:.3f}"), use_container_width=True)
 
-    # CHARTS
     if numeric_cols:
         st.markdown('<div class="section-title">📉 Charts & Visualizations</div>', unsafe_allow_html=True)
         tab1, tab2, tab3, tab4 = st.tabs(["Distribution", "Percentiles", "Bar Chart", "Line Chart"])
 
         with tab1:
             col_to_plot = st.selectbox("Select column", numeric_cols, key="dist_col")
-            chart_data = df[col_to_plot].dropna().value_counts().sort_index()
-            st.bar_chart(chart_data)
+            st.bar_chart(df[col_to_plot].dropna().value_counts().sort_index())
 
         with tab2:
             selected_cols = st.multiselect("Select columns", numeric_cols,
                                            default=numeric_cols[:min(4, len(numeric_cols))], key="box_cols")
             if selected_cols:
-                box_data = df[selected_cols].describe().T[["25%", "50%", "75%"]]
-                st.bar_chart(box_data)
+                st.bar_chart(df[selected_cols].describe().T[["25%", "50%", "75%"]])
                 st.caption("25th, 50th (median), and 75th percentiles per column")
 
         with tab3:
@@ -115,22 +109,19 @@ if df is not None:
             if cat_cols:
                 cat_col = st.selectbox("Category column", cat_cols, key="bar_cat")
                 num_col = st.selectbox("Value column", numeric_cols, key="bar_num")
-                bar_data = df.groupby(cat_col)[num_col].mean().sort_values(ascending=False).head(15)
-                st.bar_chart(bar_data)
+                st.bar_chart(df.groupby(cat_col)[num_col].mean().sort_values(ascending=False).head(15))
             else:
-                st.info("No categorical columns found for bar chart.")
+                st.info("No categorical columns found.")
 
         with tab4:
-            line_cols = st.multiselect("Select columns to plot", numeric_cols,
+            line_cols = st.multiselect("Select columns", numeric_cols,
                                        default=numeric_cols[:min(3, len(numeric_cols))], key="line_cols")
             if line_cols:
                 st.line_chart(df[line_cols].reset_index(drop=True))
 
-    # CORRELATION
     if len(numeric_cols) >= 2:
         st.markdown('<div class="section-title">🔗 Correlation & Patterns</div>', unsafe_allow_html=True)
         corr = df[numeric_cols].corr().round(2)
-
         col_a, col_b = st.columns([2, 1])
 
         with col_a:
@@ -159,7 +150,6 @@ if df is not None:
                 direction = "right-skewed ➡️" if skew > 0.5 else "left-skewed ⬅️" if skew < -0.5 else "normal ✅"
                 st.write(f"• **{col}**: {direction} ({skew:.2f})")
 
-    # EXPORT
     st.markdown('<div class="section-title">💾 Export</div>', unsafe_allow_html=True)
     csv_buffer = io.StringIO()
     df.describe().to_csv(csv_buffer)
@@ -169,12 +159,12 @@ if df is not None:
                        mime="text/csv")
 
 else:
-    st.info("👆 Upload a file or enter a file path above to begin analysis.")
+    st.info("👆 Load a file above to begin analysis.")
     st.markdown("""
     **What this system analyzes:**
-    - 🗂️ Dataset overview (shape, missing values, column types)
-    - 📈 Summary statistics (mean, std, min, max, skewness, kurtosis)
-    - 📉 Charts: distributions, percentiles, bar charts, line charts
+    - 🗂️ Dataset overview — shape, missing values, column types
+    - 📈 Summary statistics — mean, std, min, max, skewness, kurtosis
+    - 📉 Charts — distributions, percentiles, bar charts, line charts
     - 🔗 Correlation matrix and pattern detection
     - 💾 Export summary as CSV
     """)
